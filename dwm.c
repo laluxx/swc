@@ -245,6 +245,10 @@ static int xerrordummy(Display *dpy, XErrorEvent *ee);
 static int xerrorstart(Display *dpy, XErrorEvent *ee);
 static void zoom(const Arg *arg);
 
+// Perosnal
+static void focusurgent(const Arg *arg);
+
+
 /* variables */
 static const char broken[] = "broken";
 static char stext[256];
@@ -1312,41 +1316,106 @@ pop(Client *c)
 }
 
 void
+focusurgent(const Arg *arg)
+{
+    Client *c;
+    Monitor *m;
+
+    for (m = mons; m; m = m->next) {
+        for (c = m->clients; c; c = c->next) {
+            if (c->isurgent) {
+                // If the urgent window is on a different tag, switch to it
+                if (!ISVISIBLE(c)) {
+                    const Arg a = {.ui = c->tags};
+                    view(&a);
+                }
+                // If the urgent window is on a different monitor, focus that monitor
+                if (m != selmon) {
+                    unfocus(selmon->sel, 0);
+                    selmon = m;
+                }
+                // Focus the urgent window
+                focus(c);
+                arrange(m);
+                return;
+            }
+        }
+    }
+}
+
+void
 propertynotify(XEvent *e)
 {
-	Client *c;
-	Window trans;
-	XPropertyEvent *ev = &e->xproperty;
+    Client *c;
+    Window trans;
+    XPropertyEvent *ev = &e->xproperty;
 
-	if ((ev->window == root) && (ev->atom == XA_WM_NAME))
-		updatestatus();
-	else if (ev->state == PropertyDelete)
-		return; /* ignore */
-	else if ((c = wintoclient(ev->window))) {
-		switch(ev->atom) {
-		default: break;
-		case XA_WM_TRANSIENT_FOR:
-			if (!c->isfloating && (XGetTransientForHint(dpy, c->win, &trans)) &&
-				(c->isfloating = (wintoclient(trans)) != NULL))
-				arrange(c->mon);
-			break;
-		case XA_WM_NORMAL_HINTS:
-			c->hintsvalid = 0;
-			break;
-		case XA_WM_HINTS:
-			updatewmhints(c);
-			drawbars();
-			break;
-		}
-		if (ev->atom == XA_WM_NAME || ev->atom == netatom[NetWMName]) {
-			updatetitle(c);
-			if (c == c->mon->sel)
-				drawbar(c->mon);
-		}
-		if (ev->atom == netatom[NetWMWindowType])
-			updatewindowtype(c);
-	}
+    if ((ev->window == root) && (ev->atom == XA_WM_NAME))
+        updatestatus();
+    else if (ev->state == PropertyDelete)
+        return; /* ignore */
+    else if ((c = wintoclient(ev->window))) {
+        switch(ev->atom) {
+        default: break;
+        case XA_WM_TRANSIENT_FOR:
+            if (!c->isfloating && (XGetTransientForHint(dpy, c->win, &trans)) &&
+                (c->isfloating = (wintoclient(trans)) != NULL))
+                arrange(c->mon);
+            break;
+        case XA_WM_NORMAL_HINTS:
+            c->hintsvalid = 0;
+            break;
+        case XA_WM_HINTS:
+            updatewmhints(c);
+            drawbars();
+            break;
+        }
+        if (ev->atom == XA_WM_NAME || ev->atom == netatom[NetWMName]) {
+            updatetitle(c);
+            if (c == c->mon->sel)
+                drawbar(c->mon);
+        }
+        if (ev->atom == netatom[NetWMWindowType])
+            updatewindowtype(c);
+    }
 }
+
+/* void */
+/* propertynotify(XEvent *e) */
+/* { */
+/* 	Client *c; */
+/* 	Window trans; */
+/* 	XPropertyEvent *ev = &e->xproperty; */
+
+/* 	if ((ev->window == root) && (ev->atom == XA_WM_NAME)) */
+/* 		updatestatus(); */
+/* 	else if (ev->state == PropertyDelete) */
+/* 		return; /\* ignore *\/ */
+/* 	else if ((c = wintoclient(ev->window))) { */
+/* 		switch(ev->atom) { */
+/* 		default: break; */
+/* 		case XA_WM_TRANSIENT_FOR: */
+/* 			if (!c->isfloating && (XGetTransientForHint(dpy, c->win, &trans)) && */
+/* 				(c->isfloating = (wintoclient(trans)) != NULL)) */
+/* 				arrange(c->mon); */
+/* 			break; */
+/* 		case XA_WM_NORMAL_HINTS: */
+/* 			c->hintsvalid = 0; */
+/* 			break; */
+/* 		case XA_WM_HINTS: */
+/* 			updatewmhints(c); */
+/* 			drawbars(); */
+/* 			break; */
+/* 		} */
+/* 		if (ev->atom == XA_WM_NAME || ev->atom == netatom[NetWMName]) { */
+/* 			updatetitle(c); */
+/* 			if (c == c->mon->sel) */
+/* 				drawbar(c->mon); */
+/* 		} */
+/* 		if (ev->atom == netatom[NetWMWindowType]) */
+/* 			updatewindowtype(c); */
+/* 	} */
+/* } */
 
 void
 quit(const Arg *arg)
@@ -2230,21 +2299,43 @@ updatewindowtype(Client *c)
 void
 updatewmhints(Client *c)
 {
-	XWMHints *wmh;
+    XWMHints *wmh;
 
-	if ((wmh = XGetWMHints(dpy, c->win))) {
-		if (c == selmon->sel && wmh->flags & XUrgencyHint) {
-			wmh->flags &= ~XUrgencyHint;
-			XSetWMHints(dpy, c->win, wmh);
-		} else
-			c->isurgent = (wmh->flags & XUrgencyHint) ? 1 : 0;
-		if (wmh->flags & InputHint)
-			c->neverfocus = !wmh->input;
-		else
-			c->neverfocus = 0;
-		XFree(wmh);
-	}
+    if ((wmh = XGetWMHints(dpy, c->win))) {
+        if (c == selmon->sel && wmh->flags & XUrgencyHint) {
+            wmh->flags &= ~XUrgencyHint;
+            XSetWMHints(dpy, c->win, wmh);
+        } else {
+            c->isurgent = (wmh->flags & XUrgencyHint) ? 1 : 0;
+            if (c->isurgent)
+                focusurgent(NULL);
+        }
+        if (wmh->flags & InputHint)
+            c->neverfocus = !wmh->input;
+        else
+            c->neverfocus = 0;
+        XFree(wmh);
+    }
 }
+
+/* void */
+/* updatewmhints(Client *c) */
+/* { */
+/* 	XWMHints *wmh; */
+
+/* 	if ((wmh = XGetWMHints(dpy, c->win))) { */
+/* 		if (c == selmon->sel && wmh->flags & XUrgencyHint) { */
+/* 			wmh->flags &= ~XUrgencyHint; */
+/* 			XSetWMHints(dpy, c->win, wmh); */
+/* 		} else */
+/* 			c->isurgent = (wmh->flags & XUrgencyHint) ? 1 : 0; */
+/* 		if (wmh->flags & InputHint) */
+/* 			c->neverfocus = !wmh->input; */
+/* 		else */
+/* 			c->neverfocus = 0; */
+/* 		XFree(wmh); */
+/* 	} */
+/* } */
 
 void
 view(const Arg *arg)
